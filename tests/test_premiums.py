@@ -1,0 +1,118 @@
+import itertools
+
+import numpy as np
+import pytest
+
+from therisktheory.solvency_pricing import (
+    expected_aggregate_loss,
+    expected_value_premium,
+    pure_premium,
+)
+
+
+def test_pure_premium_scalar() -> None:
+    assert pure_premium(2.0, 500.0).item() == pytest.approx(1000.0)
+
+
+def test_expected_value_premium_scalar() -> None:
+    assert expected_value_premium(1000.0, 0.2).item() == pytest.approx(1200.0)
+
+
+def test_expected_loss_by_enumeration() -> None:
+    # Small model where every outcome can be listed: E[N] = 0.7, E[X] = 180.
+    count_pmf = {0: 0.5, 1: 0.3, 2: 0.2}
+    size_pmf = {100.0: 0.6, 300.0: 0.4}
+
+    mean_s = 0.0
+    for n, p_n in count_pmf.items():
+        for claims in itertools.product(size_pmf, repeat=n):
+            prob = p_n * np.prod([size_pmf[x] for x in claims])
+            mean_s += prob * sum(claims)
+
+    assert mean_s == pytest.approx(126.0)
+    assert expected_aggregate_loss(0.7, 180.0).item() == pytest.approx(mean_s)
+
+
+def test_expected_loss_by_simulation() -> None:
+    # Compound Poisson(3) with exponential claims of mean 200, so E[S] = 600.
+    # Var(S) = 3 * 2 * 200**2, which gives a standard error of about 1.1 for
+    # the sample mean; 5 standard errors is a safe tolerance.
+    rng = np.random.default_rng(20261010)
+    n_sims, lam, mean_x = 200_000, 3.0, 200.0
+
+    counts = rng.poisson(lam, size=n_sims)
+    amounts = rng.exponential(mean_x, size=counts.sum())
+    totals = np.bincount(np.repeat(np.arange(n_sims), counts), weights=amounts, minlength=n_sims)
+
+    std_error = np.sqrt(lam * 2 * mean_x**2 / n_sims)
+    assert abs(totals.mean() - expected_aggregate_loss(lam, mean_x).item()) < 5 * std_error
+
+
+def test_pure_premium_arrays() -> None:
+    result = pure_premium([0.5, 1.0, 2.0], [1000.0, 750.0, 500.0])
+    np.testing.assert_allclose(result, [500.0, 750.0, 1000.0])
+
+
+def test_pure_premium_broadcasting() -> None:
+    np.testing.assert_allclose(pure_premium([1.0, 2.0, 3.0], 100.0), [100.0, 200.0, 300.0])
+
+
+def test_expected_value_premium_broadcasting() -> None:
+    result = expected_value_premium([100.0, 200.0], [[0.0], [0.1], [0.25]])
+    np.testing.assert_allclose(result, [[100.0, 200.0], [110.0, 220.0], [125.0, 250.0]])
+
+
+def test_scalars_give_0d_float_arrays() -> None:
+    for result in (expected_aggregate_loss(1, 2), pure_premium(1, 2), expected_value_premium(1, 0)):
+        assert isinstance(result, np.ndarray)
+        assert result.ndim == 0
+        assert result.dtype == np.float64
+
+
+@pytest.mark.parametrize(("frequency", "severity"), [(0.0, 1000.0), (5.0, 0.0), (0.0, 0.0)])
+def test_zero_frequency_or_severity(frequency: float, severity: float) -> None:
+    assert pure_premium(frequency, severity).item() == 0.0
+
+
+def test_zero_loading_gives_pure_premium() -> None:
+    net = pure_premium([0.1, 1.5, 4.0], [2500.0, 800.0, 120.0])
+    np.testing.assert_array_equal(expected_value_premium(net, 0.0), net)
+
+
+def test_pure_premium_scales_with_currency() -> None:
+    np.testing.assert_allclose(pure_premium(1.7, 3.5 * 640.0), 3.5 * pure_premium(1.7, 640.0))
+
+
+def test_premium_increases_with_loading() -> None:
+    premiums = expected_value_premium(1000.0, np.linspace(0.0, 1.0, 11))
+    assert np.all(np.diff(premiums) > 0)
+
+
+def test_premium_not_below_expected_loss() -> None:
+    losses = np.array([0.0, 10.0, 1e6])
+    assert np.all(expected_value_premium(losses, 0.3) >= losses)
+
+
+@pytest.mark.parametrize(
+    ("frequency", "severity"),
+    [(-1.0, 100.0), (1.0, -100.0), (np.nan, 100.0), (1.0, np.inf), ([1.0, -0.1], 100.0)],
+)
+def test_invalid_frequency_or_severity(frequency: float, severity: float) -> None:
+    with pytest.raises(ValueError):
+        expected_aggregate_loss(frequency, severity)
+    with pytest.raises(ValueError):
+        pure_premium(frequency, severity)
+
+
+@pytest.mark.parametrize(
+    ("expected_loss", "loading"),
+    [(-1.0, 0.1), (100.0, -0.1), (np.nan, 0.1), (100.0, np.inf)],
+)
+def test_invalid_expected_value_inputs(expected_loss: float, loading: float) -> None:
+    with pytest.raises(ValueError):
+        expected_value_premium(expected_loss, loading)
+
+
+def test_error_names_the_parameter() -> None:
+    with pytest.raises(ValueError, match="loading"):
+        expected_value_premium(100.0, -0.5)
