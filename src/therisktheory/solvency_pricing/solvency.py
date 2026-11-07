@@ -38,12 +38,22 @@ def guarantee_capital(
     margin = np.asarray(safety_margin, dtype=np.float64)
 
     # Validations for NaN, infinite, or negative values
-    if np.any(np.isnan(u_arr)) or np.any(np.isnan(max_claim)) or np.any(np.isnan(margin)):
+    if (
+        np.any(np.isnan(u_arr))
+        or np.any(np.isnan(max_claim))
+        or np.any(np.isnan(margin))
+    ):
         raise ValueError("Inputs cannot contain NaN (Not a Number) values.")
-    if np.any(np.isinf(u_arr)) or np.any(np.isinf(max_claim)) or np.any(np.isinf(margin)):
+    if (
+        np.any(np.isinf(u_arr))
+        or np.any(np.isinf(max_claim))
+        or np.any(np.isinf(margin))
+    ):
         raise ValueError("Inputs cannot contain infinite values.")
     if np.any(u_arr < 0.0) or np.any(max_claim < 0.0) or np.any(margin < -1.0):
-        raise ValueError("Capital and claims must be non-negative; safety margin must be > -1.")
+        raise ValueError(
+            "Capital and claims must be non-negative; safety margin must be > -1."
+        )
 
     capital = np.maximum(0.0, max_claim - u_arr) * (1.0 + margin)
     return np.asarray(capital, dtype=np.float64)
@@ -80,12 +90,22 @@ def solvency_margin(
     coeff = np.asarray(solvency_coefficient, dtype=np.float64)
 
     # Validations for NaN, infinite, or negative values
-    if np.any(np.isnan(prem_arr)) or np.any(np.isnan(claim_arr)) or np.any(np.isnan(coeff)):
+    if (
+        np.any(np.isnan(prem_arr))
+        or np.any(np.isnan(claim_arr))
+        or np.any(np.isnan(coeff))
+    ):
         raise ValueError("Inputs cannot contain NaN values.")
-    if np.any(np.isinf(prem_arr)) or np.any(np.isinf(claim_arr)) or np.any(np.isinf(coeff)):
+    if (
+        np.any(np.isinf(prem_arr))
+        or np.any(np.isinf(claim_arr))
+        or np.any(np.isinf(coeff))
+    ):
         raise ValueError("Inputs cannot contain infinite values.")
     if np.any(prem_arr < 0.0) or np.any(claim_arr < 0.0) or np.any(coeff < 0.0):
-        raise ValueError("Premiums, claims, and solvency coefficients must be non-negative.")
+        raise ValueError(
+            "Premiums, claims, and solvency coefficients must be non-negative."
+        )
 
     base = np.maximum(prem_arr, claim_arr)
     margin = base * coeff
