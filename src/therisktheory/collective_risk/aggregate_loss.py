@@ -1,11 +1,56 @@
 """Aggregate loss models, moments, and generating functions.
 
 Topic 3: Frequency, Severity, Aggregate Loss, Approximations, and Simulation.
-Author: Maria Lucia Monticelli D’Elias
-Reference: Panjer, H.; Willmot, G. — Insurance Risk Models; Hogg, R.; Klugman, S. — Loss Distributions.
 """
 
+from __future__ import annotations
+
 import numpy as np
+import numpy.typing as npt
+
+from .._validation import (
+    as_nonnegative_finite_array,
+    check_broadcastable,
+    check_finite_result,
+)
+
+
+def _as_finite_real_array(value: npt.ArrayLike, name: str) -> np.ndarray:
+    """Convert a real numeric input to float64 and reject non-finite values."""
+    try:
+        array = np.asarray(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            f"{name} must be a real numeric value or array"
+        ) from error
+
+    if array.dtype.kind not in "iuf":
+        raise TypeError(f"{name} must contain real numeric values")
+
+    array = array.astype(np.float64, copy=False)
+
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} must contain only finite values")
+
+    return array
+
+
+def _as_finite_complex_array(value: npt.ArrayLike, name: str) -> np.ndarray:
+    """Convert a numeric input to complex128 and reject non-finite values."""
+    try:
+        array = np.asarray(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError(f"{name} must be a numeric value or array") from error
+
+    if array.dtype.kind not in "iufc":
+        raise TypeError(f"{name} must contain numeric values")
+
+    array = array.astype(np.complex128, copy=False)
+
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} must contain only finite values")
+
+    return array
 
 
 def aggregate_loss_moments(
@@ -14,38 +59,32 @@ def aggregate_loss_moments(
     expected_severity: float | np.ndarray,
     variance_severity: float | np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Calculate the mean, variance, and standard deviation of aggregate losses.
+    """Calculate aggregate loss mean, variance, and standard deviation.
 
-    Theoretical Context:
-        Under the collective risk model, the aggregate loss S is given by the sum 
-        of a random number of claims N, $S = \sum_{i=1}^{N} X_i$.
-        Using conditional expectation and variance (Wald's identities / Bienaymé formula):
-            E[S] = E[N] * E[X]
-            Var(S) = E[N] * Var(X) + Var(N) * (E[X])^2
-            SD(S) = sqrt(Var(S))
-
-    Args:
-        expected_frequency: Expected number of claims E[N]. Must be non-negative.
-        variance_frequency: Variance of claim count Var(N). Must be non-negative.
-        expected_severity: Expected claim severity E[X]. Must be non-negative.
-        variance_severity: Variance of claim severity Var(X). Must be non-negative.
-
-    Returns:
-        tuple[np.ndarray, np.ndarray, np.ndarray]: A tuple containing (mean_s, variance_s, std_s).
+    E[S] = E[N] E[X]
+    Var(S) = E[N] Var(X) + Var(N) E[X]**2
     """
-    e_n = np.asarray(expected_frequency, dtype=np.float64)
-    v_n = np.asarray(variance_frequency, dtype=np.float64)
-    e_x = np.asarray(expected_severity, dtype=np.float64)
-    v_x = np.asarray(variance_severity, dtype=np.float64)
+    e_n = as_nonnegative_finite_array(expected_frequency, "expected_frequency")
+    v_n = as_nonnegative_finite_array(variance_frequency, "variance_frequency")
+    e_x = as_nonnegative_finite_array(expected_severity, "expected_severity")
+    v_x = as_nonnegative_finite_array(variance_severity, "variance_severity")
 
-    if np.any(e_n < 0.0) or np.any(v_n < 0.0) or np.any(e_x < 0.0) or np.any(v_x < 0.0):
-        raise ValueError("All frequency and severity parameters must be non-negative.")
+    check_broadcastable(e_n=e_n, v_n=v_n, e_x=e_x, v_x=v_x)
 
-    mean_s = e_n * e_x
-    variance_s = e_n * v_x + v_n * (e_x ** 2)
-    std_s = np.sqrt(variance_s)
+    with np.errstate(over="ignore", invalid="ignore"):
+        mean_s = e_n * e_x
+        variance_s = e_n * v_x + v_n * (e_x**2)
+        std_s = np.sqrt(variance_s)
 
-    return np.asarray(mean_s, dtype=np.float64), np.asarray(variance_s, dtype=np.float64), np.asarray(std_s, dtype=np.float64)
+    check_finite_result(mean_s, "aggregate mean")
+    check_finite_result(variance_s, "aggregate variance")
+    check_finite_result(std_s, "aggregate standard deviation")
+
+    return (
+        np.asarray(mean_s, dtype=np.float64),
+        np.asarray(variance_s, dtype=np.float64),
+        np.asarray(std_s, dtype=np.float64),
+    )
 
 
 def aggregate_mgf(
@@ -53,29 +92,24 @@ def aggregate_mgf(
     lambda_poisson: float | np.ndarray,
     severity_mgf_values: float | np.ndarray,
 ) -> np.ndarray:
-    """Calculate the Moment Generating Function (MGF) of the compound Poisson aggregate loss.
+    """Calculate the compound Poisson aggregate loss MGF.
 
-    Theoretical Context:
-        For a compound Poisson process with parameter lambda and claim severity MGF M_X(t),
-        the MGF of the aggregate loss S is given by:
-            M_S(t) = exp( lambda * (M_X(t) - 1) )
-
-    Args:
-        t: Evaluation point or array for the MGF parameter t.
-        lambda_poisson: Poisson process intensity parameter (lambda). Must be non-negative.
-        severity_mgf_values: Pre-calculated values of the severity MGF M_X(t).
-
-    Returns:
-        np.ndarray: Evaluated MGF values of the aggregate loss model.
+    M_S(t) = exp(lambda * (M_X(t) - 1)).
+    The severity MGF values must be supplied by the caller.
     """
-    t_arr = np.asarray(t, dtype=np.float64)
-    lam = np.asarray(lambda_poisson, dtype=np.float64)
-    mgf_x = np.asarray(severity_mgf_values, dtype=np.float64)
+    t_arr = _as_finite_real_array(t, "t")
+    lam = as_nonnegative_finite_array(lambda_poisson, "lambda_poisson")
+    mgf_x = _as_finite_real_array(severity_mgf_values, "severity_mgf_values")
 
-    if np.any(lam < 0.0):
-        raise ValueError("Poisson intensity lambda must be non-negative.")
+    if np.any(mgf_x <= 0.0):
+        raise ValueError("Severity MGF values must be strictly positive.")
 
-    mgf_s = np.exp(lam * (mgf_x - 1.0))
+    check_broadcastable(t=t_arr, lambda_poisson=lam, severity_mgf_values=mgf_x)
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        mgf_s = np.exp(lam * (mgf_x - 1.0))
+
+    check_finite_result(mgf_s, "aggregate MGF")
     return np.asarray(mgf_s, dtype=np.float64)
 
 
@@ -84,60 +118,46 @@ def aggregate_characteristic_function(
     lambda_poisson: float | np.ndarray,
     severity_cf_values: np.ndarray,
 ) -> np.ndarray:
-    """Calculate the Characteristic Function of the compound Poisson aggregate loss.
+    """Calculate the compound Poisson aggregate loss characteristic function.
 
-    Theoretical Context:
-        The characteristic function phi_S(t) for a compound Poisson model is:
-            phi_S(t) = exp( lambda * (phi_X(t) - 1) )
-        where phi_X(t) is the characteristic function of the individual claim severity.
-
-    Args:
-        t: Evaluation point or array for parameter t.
-        lambda_poisson: Poisson frequency parameter (lambda). Must be non-negative.
-        severity_cf_values: Complex or real array of severity characteristic function values.
-
-    Returns:
-        np.ndarray: Characteristic function values of aggregate losses.
+    phi_S(t) = exp(lambda * (phi_X(t) - 1)).
     """
-    lam = np.asarray(lambda_poisson, dtype=np.float64)
-    cf_x = np.asarray(severity_cf_values)
+    t_arr = _as_finite_real_array(t, "t")
+    lam = as_nonnegative_finite_array(lambda_poisson, "lambda_poisson")
+    cf_x = _as_finite_complex_array(severity_cf_values, "severity_cf_values")
 
-    if np.any(lam < 0.0):
-        raise ValueError("Poisson intensity lambda must be non-negative.")
+    check_broadcastable(t=t_arr, lambda_poisson=lam, severity_cf_values=cf_x)
 
-    cf_s = np.exp(lam * (cf_x - 1.0))
-    return np.asarray(cf_s)
+    with np.errstate(over="ignore", invalid="ignore"):
+        cf_s = np.exp(lam * (cf_x - 1.0))
+
+    check_finite_result(cf_s, "aggregate characteristic function")
+    return np.asarray(cf_s, dtype=np.complex128)
 
 
 def individual_model_loss(
     probabilities: np.ndarray,
     amounts: np.ndarray,
 ) -> tuple[float, float]:
-    """Calculate the exact mean and variance of losses under the individual risk model.
+    """Calculate the mean and variance under the individual risk model.
 
-    Theoretical Context:
-        In the individual risk model, there is a fixed number of independent risks,
-        where each risk i has a probability of claim q_i and a fixed amount b_i.
-            E[S] = sum(q_i * b_i)
-            Var(S) = sum(q_i * (1 - q_i) * b_i^2)
-
-    Args:
-        probabilities: Array of claim occurrence probabilities (q_i) in [0, 1].
-        amounts: Array of corresponding fixed claim amounts (b_i). Must be non-negative.
-
-    Returns:
-        tuple[float, float]: Total expected aggregate loss and its variance.
+    E[S] = sum(q_i * b_i)
+    Var(S) = sum(q_i * (1 - q_i) * b_i**2)
     """
-    q = np.asarray(probabilities, dtype=np.float64)
-    b = np.asarray(amounts, dtype=np.float64)
+    q = _as_finite_real_array(probabilities, "probabilities")
+    b = as_nonnegative_finite_array(amounts, "amounts")
 
-    if np.any(q < 0.0) or np.any(q > 1.0):
+    if np.any((q < 0.0) | (q > 1.0)):
         raise ValueError("Probabilities must be between 0 and 1.")
-    if np.any(b < 0.0):
-        raise ValueError("Claim amounts must be non-negative.")
 
-    mean_ind = np.sum(q * b)
-    var_ind = np.sum(q * (1.0 - q) * (b ** 2))
+    check_broadcastable(probabilities=q, amounts=b)
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        mean_ind = np.sum(q * b)
+        var_ind = np.sum(q * (1.0 - q) * (b**2))
+
+    check_finite_result(np.asarray(mean_ind), "individual model mean")
+    check_finite_result(np.asarray(var_ind), "individual model variance")
 
     return float(mean_ind), float(var_ind)
 
@@ -148,21 +168,24 @@ def collective_model_loss(
     severity_variance: float,
     count_variance: float | None = None,
 ) -> dict[str, float]:
-    """Compute summary statistics for a collective risk model.
+    """Compute collective model moments.
 
-    Args:
-        expected_count: Expected claim count E[N].
-        severity_mean: Expected severity E[X].
-        severity_variance: Severity variance Var(X).
-        count_variance: Variance of claim count Var(N). Defaults to E[N] (Poisson assumption).
-
-    Returns:
-        dict[str, float]: Dictionary containing mean, variance, and standard deviation.
+    If count_variance is omitted, a Poisson frequency model is assumed:
+    Var(N) = E[N].
     """
-    en = float(expected_count)
-    vn = float(count_variance) if count_variance is not None else en
-    ex = float(severity_mean)
-    vx = float(severity_variance)
+    en = as_nonnegative_finite_array(expected_count, "expected_count")
+    ex = as_nonnegative_finite_array(severity_mean, "severity_mean")
+    vx = as_nonnegative_finite_array(severity_variance, "severity_variance")
+
+    if en.ndim != 0 or ex.ndim != 0 or vx.ndim != 0:
+        raise ValueError("collective_model_loss requires scalar parameters")
+
+    if count_variance is None:
+        vn = en
+    else:
+        vn = as_nonnegative_finite_array(count_variance, "count_variance")
+        if vn.ndim != 0:
+            raise ValueError("count_variance must be a scalar")
 
     mean_s, var_s, std_s = aggregate_loss_moments(en, vn, ex, vx)
 
