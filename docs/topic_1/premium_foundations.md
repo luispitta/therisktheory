@@ -5,7 +5,8 @@ Functions: `expected_aggregate_loss`, `pure_premium` and
 Status: experimental.
 
 Page numbers refer to Kaas, Goovaerts, Dhaene and Denuit (2008), *Modern
-Actuarial Risk Theory: Using R*, 2nd edition, Springer.
+Actuarial Risk Theory: Using R*, 2nd edition, Springer,
+https://doi.org/10.1007/978-3-540-70998-5.
 
 ## Model and conditions
 
@@ -59,7 +60,13 @@ From Section 5.3.1 and Table 5.1 (pp. 120–122), for `θ > 0`:
 - It can charge more than the maximum loss: for a constant risk `c > 0` the
   premium is `(1 + θ)c`.
 - It is not consistent, because `π[S + c] = π[S] + (1 + θ)c`.
-- It is not iterative, because applying it twice gives `(1 + θ)² E[S]`.
+- It is not iterative. Iterativity (property 5, p. 121) asks that
+  `π[π[S | Y]] = π[S]` for every random variable `Y`: computing the premium
+  in two steps, first given `Y` and then over `Y`, must give the direct
+  premium. Here `π[S | Y] = (1 + θ) E[S | Y]`, so by the tower property
+  `π[π[S | Y]] = (1 + θ) E[(1 + θ) E[S | Y]] = (1 + θ)² E[S]`, which differs
+  from `π[S] = (1 + θ) E[S]` whenever `θ > 0` and `E[S] > 0`. For a constant
+  risk this is the same as loading an already loaded premium a second time.
 
 The main weakness is that the loading only depends on the mean, so two risks
 with the same mean and very different variances pay the same premium. The

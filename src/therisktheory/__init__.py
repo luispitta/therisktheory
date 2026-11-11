@@ -1,15 +1,23 @@
-"""TheRiskTheory package."""
+
+"""TheRiskTheory actuarial package core."""
+
+__version__ = "0.1.0"
 
 from .solvency_pricing import (
+    expected_aggregate_loss,
     expected_value_premium,
-    guarantee_capital,
     pure_premium,
-    solvency_margin,
+    guarantee_capital,
+    solvency_ratio,
 )
+from .solvency_pricing.solvency import evaluate_portfolio_solvency
 
 __all__ = [
-    "pure_premium",
+    "__version__",
+    "expected_aggregate_loss",
     "expected_value_premium",
+    "pure_premium",
     "guarantee_capital",
-    "solvency_margin",
+    "solvency_ratio",
+    "evaluate_portfolio_solvency",
 ]

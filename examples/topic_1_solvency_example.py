@@ -4,7 +4,7 @@ Demonstrates how solvency evaluation integrates pure premiums (Bracamonte)
 and loaded premiums (Garcia) to compute available capital and solvency metrics.
 """
 
-from therisktheory.solvency import evaluate_portfolio_solvency
+from therisktheory.solvency_pricing.solvency import evaluate_portfolio_solvency
 
 
 def main():
