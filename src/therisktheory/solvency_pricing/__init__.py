@@ -1,5 +1,11 @@
-"""Solvency, pricing, safety loading, retention, and reinsurance."""
+"""Solvency and pricing module."""
 
-from .premiums import pure_premium
+from .premiums import expected_value_premium, pure_premium
+from .solvency import guarantee_capital, solvency_margin
 
-__all__ = ["pure_premium"]
+__all__ = [
+    "pure_premium",
+    "expected_value_premium",
+    "guarantee_capital",
+    "solvency_margin",
+]

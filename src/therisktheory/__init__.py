@@ -1,3 +1,15 @@
-"""TheRiskTheory: Mathematical Risk Theory in Python."""
+"""TheRiskTheory package."""
 
-__version__ = "0.1.0"
+from .solvency_pricing import (
+    expected_value_premium,
+    guarantee_capital,
+    pure_premium,
+    solvency_margin,
+)
+
+__all__ = [
+    "pure_premium",
+    "expected_value_premium",
+    "guarantee_capital",
+    "solvency_margin",
+]

@@ -1,57 +1,43 @@
-"""Premium principles and basic pricing functions."""
+"""Pure premium and premium principles for TheRiskTheory.
 
-from __future__ import annotations
+Topic 1: Solvency and Pricing.
+Author: Maria Lucia Monticelli D’Elias
+"""
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 
 
 def pure_premium(
-    frequency: ArrayLike,
-    mean_severity: ArrayLike,
-) -> NDArray[np.float64]:
-    """Compute the pure premium under the frequency-severity decomposition.
+    frequency: float | np.ndarray,
+    mean_severity: float | np.ndarray,
+) -> np.ndarray:
+    """Calculate the pure premium (net premium) from frequency and severity.
 
-    The pure premium is the expected aggregate loss:
+    Args:
+        frequency: Expected claim frequency (lambda).
+        mean_severity: Expected claim severity (mu).
 
-        P = E[N] E[X]
-
-    under the standard assumption that claim count ``N`` and claim severities
-    are independent and identically distributed in the compound-sum model.
-
-    Parameters
-    ----------
-    frequency
-        Expected claim frequency ``E[N]``. Scalars and array-like inputs are
-        accepted.
-    mean_severity
-        Expected claim severity ``E[X]``. Scalars and array-like inputs are
-        accepted.
-
-    Returns
-    -------
-    numpy.ndarray
-        Element-wise pure premium. NumPy broadcasting rules apply.
-
-    Raises
-    ------
-    ValueError
-        If any frequency or mean severity value is negative.
-
-    Notes
-    -----
-    Validation status: experimental.
-
-    This function is included as the reference contribution pattern for the
-    repository. Its mathematical source must be recorded before promotion to
-    ``mathematically_validated``.
+    Returns:
+        np.ndarray: Calculated pure premium.
     """
-    freq = np.asarray(frequency, dtype=np.float64)
-    sev = np.asarray(mean_severity, dtype=np.float64)
+    freq_arr = np.asarray(frequency, dtype=np.float64)
+    sev_arr = np.asarray(mean_severity, dtype=np.float64)
+    return np.asarray(freq_arr * sev_arr, dtype=np.float64)
 
-    if np.any(freq < 0):
-        raise ValueError("frequency must be non-negative")
-    if np.any(sev < 0):
-        raise ValueError("mean_severity must be non-negative")
 
-    return np.asarray(freq * sev, dtype=np.float64)
+def expected_value_premium(
+    pure_premium_val: float | np.ndarray,
+    loading: float | np.ndarray = 0.1,
+) -> np.ndarray:
+    """Calculate the premium using the expected value principle with safety loading.
+
+    Args:
+        pure_premium_val: Net or pure premium amount.
+        loading: Safety loading factor (e.g., 0.1 for 10%).
+
+    Returns:
+        np.ndarray: Gross premium with safety loading.
+    """
+    net_arr = np.asarray(pure_premium_val, dtype=np.float64)
+    load_arr = np.asarray(loading, dtype=np.float64)
+    return np.asarray(net_arr * (1.0 + load_arr), dtype=np.float64)
