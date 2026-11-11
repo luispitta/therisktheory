@@ -1,79 +1,167 @@
+﻿
 """De Finetti reserve funds and surplus trajectory models.
 
 Topic 2: De Finetti, Games, and Ruin.
-Author: Maria Lucia Monticelli D’Elias
 """
 
 import numpy as np
+
+from .._validation import (
+    as_nonnegative_finite_array,
+    check_broadcastable,
+    check_finite_result,
+)
 
 
 def de_finetti_premium(
     expected_severity: float | np.ndarray,
     safety_loading: float | np.ndarray,
 ) -> np.ndarray:
-    """Calculate the premium rate under the De Finetti surplus framework.
+    """Calculate the premium using the expected value principle.
 
-    Theoretical Context:
-        Within De Finetti's discrete risk model, the premium collected per period 
-        is structured using the expected value premium principle, incorporating a 
-        safety loading theta over the expected claim severity E[X]:
-            P = E[X] * (1 + theta)
+    The calculation follows P = E[X] * (1 + theta).
 
     Args:
-        expected_severity: Expected claim amount per period (E[X]). Must be non-negative.
-        safety_loading: Safety loading parameter (theta). Must be >= 0.
+        expected_severity: Expected claim amount. Must be non-negative
+            and finite.
+        safety_loading: Safety loading parameter. Must be non-negative
+            and finite.
 
     Returns:
-        np.ndarray: Calculated De Finetti premium amount.
+        A float64 array containing the calculated premium.
+
+    Raises:
+        TypeError: If an input is not numeric.
+        ValueError: If an input is negative, non-finite, or has an
+            incompatible shape.
+        OverflowError: If the result exceeds the float64 range.
     """
-    ex = np.asarray(expected_severity, dtype=np.float64)
-    theta = np.asarray(safety_loading, dtype=np.float64)
+    severity = as_nonnegative_finite_array(
+        expected_severity, "expected_severity"
+    )
+    loading = as_nonnegative_finite_array(
+        safety_loading, "safety_loading"
+    )
 
-    if np.any(ex < 0.0) or np.any(theta < 0.0):
-        raise ValueError("Expected severity and safety loading must be non-negative.")
+    check_broadcastable(
+        expected_severity=severity,
+        safety_loading=loading,
+    )
 
-    return np.asarray(ex * (1.0 + theta), dtype=np.float64)
+    with np.errstate(over="ignore", invalid="ignore"):
+        result = np.asarray(
+            severity * (1.0 + loading),
+            dtype=np.float64,
+        )
+
+    return check_finite_result(result, "De Finetti premium")
 
 
 def de_finetti_profit(
     premiums: np.ndarray,
     claims: np.ndarray,
 ) -> np.ndarray:
-    """Calculate the periodic profit (premiums minus claims) under De Finetti framework."""
-    prem_seq = np.asarray(premiums, dtype=np.float64)
-    claim_seq = np.asarray(claims, dtype=np.float64)
-    return np.asarray(prem_seq - claim_seq, dtype=np.float64)
+    """Calculate periodic profit as premiums minus claims.
+
+    Negative profit values are allowed.
+
+    Args:
+        premiums: Premium income amounts. Must be non-negative and finite.
+        claims: Claim payment amounts. Must be non-negative and finite.
+
+    Returns:
+        A float64 array containing periodic profit.
+
+    Raises:
+        TypeError: If an input is not numeric.
+        ValueError: If an input is negative, non-finite, or has an
+            incompatible shape.
+        OverflowError: If the result exceeds the float64 range.
+    """
+    premium_array = as_nonnegative_finite_array(
+        premiums, "premiums"
+    )
+    claim_array = as_nonnegative_finite_array(
+        claims, "claims"
+    )
+
+    check_broadcastable(
+        premiums=premium_array,
+        claims=claim_array,
+    )
+
+    result = np.asarray(
+        premium_array - claim_array,
+        dtype=np.float64,
+    )
+
+    return check_finite_result(result, "De Finetti profit")
 
 
 def reserve_fund(
-    initial_reserve: float | np.ndarray,
+    initial_reserve: float,
     premiums: np.ndarray,
     claims: np.ndarray,
 ) -> np.ndarray:
-    """Calculate the accumulated reserve fund trajectory over discrete time periods.
+    """Calculate the accumulated reserve after each period.
 
-    Theoretical Context:
-        The surplus process U_t tracks the capital of the insurer over time t.
-        The periodic profit is P_t - C_t, and the accumulated reserve fund at time t is:
-            U_t = U_{0} + sum_{k=1}^{t} (P_k - C_k)
-        This formulation explicitly allows for negative reserve states to evaluate ruin.
+    The reserve follows U_t = U_0 + sum(P_k - C_k), for k = 1, ..., t.
+    Negative reserve states are retained to allow ruin analysis.
+
+    Premium and claim sequences must be one-dimensional and have
+    exactly the same length. The initial reserve must be scalar.
+
+    The returned trajectory contains the reserve after each period;
+    the initial reserve U_0 is not included as a separate first element.
 
     Args:
-        initial_reserve: Starting capital or initial surplus level (U_0).
-        premiums: Array of premium income sequence per period (P_t).
-        claims: Array of claim payments sequence per period (C_t).
+        initial_reserve: Non-negative scalar initial capital U_0.
+        premiums: Non-negative one-dimensional premium sequence.
+        claims: Non-negative one-dimensional claim sequence.
 
     Returns:
-        np.ndarray: Trajectory of accumulated reserves across the time horizon.
+        A float64 array containing the reserve after each period.
+
+    Raises:
+        TypeError: If an input is not numeric.
+        ValueError: If an input is negative, non-finite, non-scalar,
+            multidimensional, or has an incompatible length.
+        OverflowError: If the reserve calculation exceeds float64 range.
     """
-    u0 = np.asarray(initial_reserve, dtype=np.float64)
-    prem_seq = np.asarray(premiums, dtype=np.float64)
-    claim_seq = np.asarray(claims, dtype=np.float64)
+    initial = as_nonnegative_finite_array(
+        initial_reserve, "initial_reserve"
+    )
+    premium_array = as_nonnegative_finite_array(
+        premiums, "premiums"
+    )
+    claim_array = as_nonnegative_finite_array(
+        claims, "claims"
+    )
 
-    if np.any(prem_seq < 0.0) or np.any(claim_seq < 0.0):
-        raise ValueError("Premiums and claims sequences must be non-negative amounts.")
+    if initial.ndim != 0:
+        raise ValueError("initial_reserve must be a scalar")
 
-    periodic_profit = prem_seq - claim_seq
-    trajectory = u0 + np.cumsum(periodic_profit)
+    if premium_array.ndim != 1:
+        raise ValueError("premiums must be one-dimensional")
 
-    return np.asarray(trajectory, dtype=np.float64)
+    if claim_array.ndim != 1:
+        raise ValueError("claims must be one-dimensional")
+
+    if premium_array.shape != claim_array.shape:
+        raise ValueError(
+            "premiums and claims must have the same length"
+        )
+
+    periodic_profit = de_finetti_profit(
+        premium_array,
+        claim_array,
+    )
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        cumulative_profit = np.cumsum(periodic_profit)
+        trajectory = np.asarray(
+            initial + cumulative_profit,
+            dtype=np.float64,
+        )
+
+    return check_finite_result(trajectory, "Reserve fund")
