@@ -8,24 +8,19 @@ Reference: Bühlmann, H. — Mathematical Methods in Risk Theory; Klugman, S. et
 import numpy as np
 from scipy.special import erfinv
 
-# Intentamos importar de forma segura las dependencias de los compañeros (Bracamonte y Garcia)
+# Bracamonte aporta la f?rmula com?n de prima de credibilidad.
+# Se mantiene una alternativa local mientras su m?dulo no est? integrado.
 try:
-    from therisktheory.credibility.foundations import credibility_premium as bracamonte_credibility_premium
+    from .premium import credibility_premium as bracamonte_credibility_premium
 except ImportError:
     bracamonte_credibility_premium = None
-
-try:
-    from therisktheory.credibility.weights import credibility_weight as garcia_credibility_weight
-except ImportError:
-    garcia_credibility_weight = None
-
 
 def partial_credibility_standard(
     expected_claim_count: float | np.ndarray,
     target_accuracy: float = 0.05,
     confidence_level: float = 0.95,
 ) -> float | np.ndarray:
-    """Calculate the full credibility standard (expected number of claims) based on accuracy and confidence.
+    """Calculate the full credibility standard from accuracy and confidence.
 
     Theoretical Context:
         The classical full credibility standard r_0 ensures that the observed sample mean 
@@ -76,7 +71,7 @@ def partial_credibility_premium(
 
     Args:
         collective_premium: Prior or collective premium baseline (Mu). Must be non-negative.
-        observed_experience_mean: Actual observed sample mean of claims (X_bar). Must be non-negative.
+        observed_experience_mean: Observed sample mean of claims (X_bar).
         credibility_weight: Credibility factor Z assigned to the portfolio data, in [0, 1].
 
     Returns:
@@ -114,12 +109,20 @@ def integrated_partial_credibility_evaluation(
     """
     r_0 = float(partial_credibility_standard(exposure_count, target_accuracy))
     
-    if garcia_credibility_weight is not None:
-        z = float(garcia_credibility_weight(exposure_count, r_0))
-    else:
-        z = float(min(1.0, np.sqrt(exposure_count / r_0))) if r_0 > 0 else 0.0
+    # Limited fluctuation credibility; this is not the Buhlmann weight.
+    # Buhlmann requires EPV and VHM, which this wrapper does not receive.
+    z = float(min(1.0, np.sqrt(exposure_count / r_0))) if r_0 > 0 else 0.0
 
-    final_premium = float(partial_credibility_premium(collective_base, observed_mean, z))
+    if bracamonte_credibility_premium is not None:
+        # Bracamonte's signature: (individual_mean, collective_mean, weight).
+        premium_result = bracamonte_credibility_premium(
+            observed_mean, collective_base, z
+        )
+        final_premium = float(np.asarray(premium_result))
+    else:
+        final_premium = float(
+            partial_credibility_premium(collective_base, observed_mean, z)
+        )
 
     return {
         "full_credibility_standard": r_0,

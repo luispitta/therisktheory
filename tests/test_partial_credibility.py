@@ -7,10 +7,11 @@ Author: Maria Lucia Monticelli D’Elias
 import numpy as np
 import pytest
 from scipy.special import erfinv
+
 from therisktheory.credibility.partial_credibility import (
-    partial_credibility_standard,
-    partial_credibility_premium,
     integrated_partial_credibility_evaluation,
+    partial_credibility_premium,
+    partial_credibility_standard,
 )
 
 
@@ -86,7 +87,7 @@ def test_boundary_zero_credibility_weight():
 
 
 def test_boundary_target_accuracy_limits():
-    """Boundary test: Stricter target accuracy (smaller k) requires exponentially larger standards."""
+    """Stricter target accuracy requires a larger full credibility standard."""
     std_loose = partial_credibility_standard(10.0, target_accuracy=0.10)
     std_strict = partial_credibility_standard(10.0, target_accuracy=0.01)
     
@@ -97,7 +98,7 @@ def test_boundary_target_accuracy_limits():
 # 4. MATHEMATICAL PROPERTIES TESTS (Propiedades Matemáticas)
 # ==========================================
 def test_property_convex_combination_bounds():
-    """Property test: Credibility premium must always lie between collective prior and experience mean."""
+    """Credibility premium must lie between prior and experience mean."""
     mu = 1500.0
     x_bar = 1200.0
     
@@ -108,7 +109,7 @@ def test_property_convex_combination_bounds():
 
 
 def test_property_monotonicity_with_experience():
-    """Property test: As observed experience increases, credibility premium increases monotonically."""
+    """Credibility premium increases with observed experience."""
     mu = 1000.0
     z = 0.5
     
