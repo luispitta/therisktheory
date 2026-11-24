@@ -85,3 +85,30 @@ def check_finite_result(
             f"{name} overflowed: the result exceeds the float64 range"
         )
     return result
+
+
+def as_real_array(
+    value: npt.ArrayLike, name: str
+) -> npt.NDArray[np.float64]:
+    """Validate finite real values, including negative observations."""
+    try:
+        array = np.asarray(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError(f"{name} must be a real number or array") from error
+    if array.dtype.kind not in _NUMERIC_KINDS:
+        raise TypeError(f"{name} must contain real numeric values")
+    with np.errstate(over="ignore", invalid="ignore"):
+        result = array.astype(np.float64, copy=False)
+    if not np.all(np.isfinite(result)):
+        raise ValueError(f"{name} must be finite")
+    return result
+
+
+def as_probability_array(
+    value: npt.ArrayLike, name: str
+) -> npt.NDArray[np.float64]:
+    """Validate a finite probability or array of probabilities in [0, 1]."""
+    result = as_real_array(value, name)
+    if np.any((result < 0.0) | (result > 1.0)):
+        raise ValueError(f"{name} must be between 0 and 1")
+    return result
