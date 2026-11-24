@@ -32,4 +32,4 @@ jobs:
 
       - name: Test
         if: always()
-        run: pytest --cov=therisktheory --cov-report=term-missing
+        run: pytest --continue-on-collection-errors --cov=therisktheory --cov-report=term-missing
