@@ -848,3 +848,21 @@ def test_interoperate_validation_errors() -> None:
         interoperate_with_portfolio_reserves_and_pricing(
             100.0, 400.0, 0.15, 0.20, target_ruin_tolerance=0.0
         )
+
+
+def test_zero_retention_equal_loadings_preserves_positive_reserve() -> None:
+    """Complete cession with zero net drift is deterministic, not Brownian."""
+    reserve = np.array([0.0, 1.0, 10.0])
+    result = de_finetti_retention_ruin_approximation(
+        initial_capital=reserve,
+        retention_rate=0.0,
+        expected_loss=100.0,
+        variance_loss=400.0,
+        insurer_loading=0.0,
+        reinsurer_loading=0.0,
+    )
+    np.testing.assert_array_equal(result, [1.0, 0.0, 0.0])
+    with_positive_loading = de_finetti_retention_ruin_approximation(
+        10.0, 0.0, 100.0, 400.0, 0.2, 0.2
+    )
+    assert float(with_positive_loading) == 0.0
