@@ -227,6 +227,12 @@ Thus, De Finetti's diffusion proxy safety factor $2\theta$ corresponds directly 
 
 ---
 
+### Deterministic boundary with complete cession
+
+When retention is zero and the insurer's and reinsurer's safety loadings are equal, both net surplus drift and retained claim variance vanish exactly. Starting with strictly positive capital, the reserve remains constant and the ultimate probability of reaching ruin is zero in this deterministic model. This must not be confused with a zero-drift Brownian process with positive variance, for which the hitting probability is one. At initial capital zero, the implementation uses the convention that the ruin barrier has already been reached.
+
+---
+
 ## Domain & Parameter Restrictions
 
 - Retention proportion: $\alpha \in [0.0, 1.0]$.
