@@ -487,6 +487,17 @@ def de_finetti_retention_ruin_approximation(
             np.where(np.isposinf(theta), 0.0, normal_approx),
         )
 
+    # With complete cession and exactly balanced loadings, both drift and
+    # retained volatility vanish. A strictly positive reserve remains constant;
+    # the zero-drift Brownian hitting formula does not apply in this case.
+    constant_positive_reserve = (
+        (np.asarray(retention_rate, dtype=np.float64) == 0.0)
+        & (np.asarray(insurer_loading, dtype=np.float64)
+           == np.asarray(reinsurer_loading, dtype=np.float64))
+        & (u > 0.0)
+    )
+    approx = np.where(constant_positive_reserve, 0.0, approx)
+
     return np.asarray(np.clip(approx, 0.0, 1.0), dtype=np.float64)
 
 
