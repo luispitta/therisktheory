@@ -27,7 +27,9 @@ jobs:
         run: ruff check .
 
       - name: Format check
+        if: always()
         run: ruff format --check .
 
       - name: Test
+        if: always()
         run: pytest --cov=therisktheory --cov-report=term-missing
