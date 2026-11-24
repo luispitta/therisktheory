@@ -88,9 +88,9 @@ def check_finite_result(
 
 
 def as_real_array(
-    value: npt.ArrayLike, name: str
+    value: npt.ArrayLike, name: str, *, allow_inf: bool = False
 ) -> npt.NDArray[np.float64]:
-    """Validate finite real values, including negative observations."""
+    """Validate real numeric data, allowing infinity when requested."""
     try:
         array = np.asarray(value)
     except (TypeError, ValueError) as error:
@@ -99,7 +99,9 @@ def as_real_array(
         raise TypeError(f"{name} must contain real numeric values")
     with np.errstate(over="ignore", invalid="ignore"):
         result = array.astype(np.float64, copy=False)
-    if not np.all(np.isfinite(result)):
+    if np.any(np.isnan(result)):
+        raise ValueError(f"{name} must not be NaN")
+    if not allow_inf and np.any(np.isinf(result)):
         raise ValueError(f"{name} must be finite")
     return result
 
@@ -107,8 +109,13 @@ def as_real_array(
 def as_probability_array(
     value: npt.ArrayLike, name: str
 ) -> npt.NDArray[np.float64]:
-    """Validate a finite probability or array of probabilities in [0, 1]."""
+    """Validate a finite probability or probability array in [0, 1]."""
     result = as_real_array(value, name)
     if np.any((result < 0.0) | (result > 1.0)):
         raise ValueError(f"{name} must be between 0 and 1")
     return result
+
+
+def validate_numeric_array(value: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """Compatibility entrypoint for finite real arrays used by Topic 3."""
+    return as_real_array(value, "value")
