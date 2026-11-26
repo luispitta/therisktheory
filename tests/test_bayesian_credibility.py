@@ -50,3 +50,21 @@ def test_invalid_parameters_raises_error() -> None:
         bayesian_credibility_premium(2.0, 1.0, -1.0, 2.0)  # Negative claims test
     with pytest.raises(ValueError):
         bayesian_credibility_premium(2.0, 1.0, float("nan"), 2.0)  # Non-finite test
+
+def test_posterior_ratio_when_both_sums_overflow() -> None:
+    assert bayesian_credibility_premium(1e308, 1e308, 1e308, 1e308) == pytest.approx(1.0)
+
+
+def test_posterior_ratio_when_only_denominator_overflows() -> None:
+    assert bayesian_credibility_premium(1e308, 1e308, 0, 1e308) == pytest.approx(0.5)
+
+
+def test_posterior_ratio_true_overflow_raises() -> None:
+    with pytest.raises(OverflowError):
+        bayesian_credibility_premium(1e308, 0.01, 1e308, 0.01)
+
+
+def test_predictive_mean_scales_with_future_exposure() -> None:
+    np.testing.assert_allclose(
+        posterior_predictive_mean(2, 1, 5, 2, [1, 3]), [7 / 3, 7]
+    )

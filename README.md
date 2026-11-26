@@ -1,6 +1,6 @@
 # TheRiskTheory
 
-**A human-validated, vectorized Python implementation of Mathematical Risk Theory.**
+**An educational, vectorized Python implementation of Mathematical Risk Theory.**
 
 TheRiskTheory is an educational and scientific open-source project created around a Mathematical Risk Theory II course. Its goal is to transform the complete mathematical content of the subject into reusable, tested, documented Python functions.
 
@@ -21,7 +21,7 @@ AI tools may be used to help write code, tests, examples, and documentation. AI 
 ## Installation
 
 ```bash
-git clone https://github.com/<owner>/therisktheory.git
+git clone https://github.com/luispitta/therisktheory.git
 cd therisktheory
 pip install -e ".[dev]"
 ```
@@ -49,7 +49,7 @@ print(premium)
 
 ## Course architecture
 
-The syllabus is divided into six development areas so that six contributors can work in parallel.
+The five course topics are organized into six computational areas, developed by six student contributors.
 
 | Area | Scope |
 |---|---|
@@ -189,6 +189,14 @@ With coverage:
 ```bash
 pytest --cov=therisktheory --cov-report=term-missing
 ```
+
+## Verified baseline (26 November 2026)
+
+The integrated course snapshot passed 1,010 tests on Python 3.11 and 3.12,
+with 93% combined line/branch coverage. See the
+[CI run](https://github.com/luispitta/therisktheory/actions/runs/45851578904)
+for details. Lint and formatting were not green on that snapshot.
+Passing tests do not constitute independent mathematical certification.
 
 ## Formatting and linting
 

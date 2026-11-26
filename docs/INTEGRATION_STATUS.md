@@ -40,3 +40,17 @@ Prof. Luis Pitta
 ## Conflict resolution and source history — 26 November 2026
 
 The integration snapshot from PR #31 is the resolved version for overlapping or stale files. Original PR heads are included as merge parents to preserve authorship and history. The later #24 Gamma–Poisson implementation and expanded documentation supersede the incorrect Bayesian module; its prior misplaced retention code is preserved in a compatibility module. Existing foundational files and lazy exports are retained instead of accepting stale modifications or deletions. Original branches are unchanged. This is administrative integration, not mathematical or CI approval.
+
+## Functional audit — 26 November 2026
+
+The integrated commit 85b2d01 passed 1,010 tests on both Python 3.11 and 3.12,
+with 93% coverage; the CI run failed on lint and formatting (1,046 lint
+diagnostics). This is a measured baseline, not a blanket validation.
+
+The next maintenance change adds regression tests for overflow-safe Bayesian
+posterior ratios and a finite-horizon ruin benchmark with explicit model
+assumptions, replacing unsupported time multipliers. The classical result
+is a seeded Monte Carlo estimate at actual claim epochs; the discrete
+result uses the exact first-passage distribution. The two models are not
+claimed to have identical moments. Strict pytest collection and a 90%
+coverage floor are enforced, while lint and formatting remain enabled.

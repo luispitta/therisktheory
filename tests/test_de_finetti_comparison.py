@@ -54,3 +54,30 @@ def test_invalid_inputs_raise_errors() -> None:
         elementary_insurance_case("invalid", 50.0, 0.2, 200.0)
     with pytest.raises(ValueError):
         benchmark_ruin_models(-10.0, 1.0, 40.0, 0.2, 3)
+
+def test_benchmark_first_passage_and_reproducibility() -> None:
+    args = (0.0, 1.0, 10.0, 0.2, 3)
+    result = benchmark_ruin_models(*args)
+    repeat = benchmark_ruin_models(*args)
+    q = 1 / 2.2
+    p = 1 - q
+    np.testing.assert_allclose(
+        result["de_finetti_ruin"], [q, q, q + p * q**2]
+    )
+    np.testing.assert_array_equal(
+        result["classical_ruin"], repeat["classical_ruin"]
+    )
+    for key in ("classical_ruin", "de_finetti_ruin"):
+        assert np.all(np.diff(result[key]) >= 0)
+        assert np.all((result[key] >= 0) & (result[key] <= 1))
+    assert np.all(
+        result["classical_ruin"]
+        <= 1 / 1.2 + 5 * result["classical_standard_error"]
+    )
+
+
+def test_benchmark_rejects_nonfinite_and_fractional_horizon() -> None:
+    with pytest.raises(ValueError):
+        benchmark_ruin_models(0, np.nan, 1, 0.2, 3)
+    with pytest.raises(TypeError):
+        benchmark_ruin_models(0, 1, 1, 0.2, 2.5)
