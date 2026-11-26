@@ -5,8 +5,14 @@ Reference:
     Beard, R. E., Pentikäinen, T., and Pesonen, E. (1984). Risk Theory.
 """
 from __future__ import annotations
+
+import operator
+
 import numpy as np
 import numpy.typing as npt
+from scipy.stats import binom
+
+from therisktheory import _validation
 
 def elementary_insurance_case(
     initial_capital: float | int | npt.ArrayLike,
@@ -87,51 +93,102 @@ def benchmark_ruin_models(
     claim_mean: float,
     safety_loading: float,
     horizon_periods: int = 1,
+    *,
+    n_paths: int = 20_000,
+    seed: int = 20261126,
 ) -> dict[str, npt.NDArray[np.float64]]:
-    """Performs a reproducible benchmark deriving classical (Cramér-Lundberg asymptotic)
-    and De Finetti discrete game ruin probabilities under identical risk metrics and horizons.
+    """Compare finite-horizon ruin in two explicitly distinct models.
+
+    The classical process has Poisson arrivals, exponential claim sizes,
+    continuous premium income and strict ruin (surplus below zero).
+    It is simulated at claim epochs, not just at observation dates.
+
+    The discrete comparison uses unit gains/losses of size claim_mean,
+    floor(lambda_rate * t) rounds, and odds q/p = 1/(1 + safety_loading).
+    Its first-passage probability is exact by the ballot theorem. This
+    is a pedagogical comparison, not a moment-matched equivalence.
 
     Args:
-        initial_capital: Starting surplus U_0 (fixed across horizon).
-        lambda_rate: Poisson claim arrival intensity.
-        claim_mean: Expected single claim severity.
-        safety_loading: Relative safety loading coefficient (theta > 0).
-        horizon_periods: Discrete time horizon steps T for evaluation (t = 1, ..., T).
+        initial_capital: Nonnegative starting surplus.
+        lambda_rate: Positive Poisson arrival intensity.
+        claim_mean: Positive exponential mean and discrete stake.
+        safety_loading: Positive relative loading.
+        horizon_periods: Number of integer observation times.
+        n_paths: Number of independent classical simulation paths.
+        seed: Reproducible NumPy random seed.
 
     Returns:
-        Dictionary containing classical estimates, De Finetti discrete estimates, and absolute deviations.
+        Classical estimates, their binomial standard errors, exact discrete
+        probabilities and absolute deviations, at times 1 through T.
+
+    Raises:
+        ValueError: If inputs are invalid or the teaching workload is too large.
+        TypeError: If integer arguments are not integers or inputs are nonnumeric.
     """
-    if initial_capital < 0 or lambda_rate <= 0 or claim_mean <= 0 or safety_loading <= 0 or horizon_periods < 1:
-        raise ValueError("Invalid parameters for benchmark generation.")
+    vals = []
+    for name, value in (
+        ("initial_capital", initial_capital),
+        ("lambda_rate", lambda_rate),
+        ("claim_mean", claim_mean),
+        ("safety_loading", safety_loading),
+    ):
+        arr = _validation.as_nonnegative_finite_array(value, name)
+        if arr.ndim != 0:
+            raise ValueError(f"{name} must be scalar")
+        vals.append(float(arr))
+    u, lam, mu, theta = vals
+    if min(lam, mu, theta) <= 0:
+        raise ValueError("rate, claim mean and loading must be positive")
+    if isinstance(horizon_periods, (bool, np.bool_)) or isinstance(
+        n_paths, (bool, np.bool_)
+    ):
+        raise TypeError("horizon_periods and n_paths must be integers")
+    periods = operator.index(horizon_periods)
+    count = operator.index(n_paths)
+    if not 1 <= periods <= 10_000 or not 1 <= count <= 1_000_000:
+        raise ValueError("invalid horizon_periods or n_paths")
+    end = lam * periods
+    if not np.isfinite(end) or end > 1000 or count * end > 20_000_000:
+        raise ValueError("benchmark workload exceeds the teaching limit")
 
-    # Premium income rate c = (1 + theta) * lambda * expected_claim
-    premium_rate = (1.0 + safety_loading) * lambda_rate * claim_mean
+    # Normalize time by lambda and money by the exponential mean.
+    # Ruin is possible only immediately after a claim.
+    times = lam * np.arange(1, periods + 1, dtype=np.float64)
+    rng = np.random.default_rng(seed)
+    capital = u / mu
+    first_ruin = np.full(count, np.inf)
+    elapsed = np.zeros(count)
+    aggregate = np.zeros(count)
+    active = np.arange(count)
+    while active.size:
+        elapsed[active] += rng.exponential(size=active.size)
+        active = active[elapsed[active] <= end]
+        if not active.size:
+            break
+        aggregate[active] += rng.exponential(size=active.size)
+        ruined = aggregate[active] > capital + (1 + theta) * elapsed[active]
+        first_ruin[active[ruined]] = elapsed[active[ruined]]
+        active = active[~ruined]
+    classical = np.searchsorted(
+        np.sort(first_ruin), times, side="right"
+    ) / count
+    standard_error = np.sqrt(classical * (1 - classical) / count)
 
-    # Classical Cramér-Lundberg adjustment coefficient approximation (Lundberg's exponent R)
-    r_adj = (2.0 * safety_loading) / (claim_mean * (1.0 + safety_loading))
-
-    # Time horizon steps array (t = 1 to horizon_periods)
-    time_steps = np.arange(1, horizon_periods + 1, dtype=np.float64)
-
-    # Classical ruin probability estimate over horizon t
-    classical_est = np.array([
-        min(1.0, np.exp(-r_adj * initial_capital) * (1.0 + 0.1 / t))
-        for t in time_steps
-    ], dtype=np.float64)
-
-    # De Finetti discrete game ruin probability estimate using explicit p_equivalent
-    p_equivalent = 1.0 / (1.0 + safety_loading)
-    
-    de_finetti_est = np.array([
-        min(1.0, (p_equivalent ** (initial_capital / claim_mean)) * (1.0 + (t / (horizon_periods + 1))))
-        for t in time_steps
-    ], dtype=np.float64)
-    de_finetti_est = np.clip(de_finetti_est, 0.0, 1.0)
-
-    deviations = compare_classical_de_finetti(classical_est, de_finetti_est)
-
+    # For starting fortune z, the first hit of zero at k has probability
+    # z/k * P(Binomial(k, p) = (k-z)/2).
+    rounds = np.floor(times).astype(np.int64)
+    maximum = int(rounds[-1])
+    discrete = np.zeros(periods, dtype=np.float64)
+    if capital < maximum:
+        z = int(np.floor(capital)) + 1
+        k = np.arange(z, maximum + 1, 2, dtype=np.int64)
+        q = 1.0 / (2.0 + theta)
+        first_hit = z / k * binom.pmf((k + z) // 2, k, q)
+        cumulative = np.concatenate(([0.0], np.cumsum(first_hit)))
+        discrete = cumulative[np.searchsorted(k, rounds, side="right")]
     return {
-        "classical_ruin": classical_est,
-        "de_finetti_ruin": de_finetti_est,
-        "absolute_deviations": deviations,
+        "classical_ruin": classical,
+        "classical_standard_error": standard_error,
+        "de_finetti_ruin": discrete,
+        "absolute_deviations": np.abs(classical - discrete),
     }

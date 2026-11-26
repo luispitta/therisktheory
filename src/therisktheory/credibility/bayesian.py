@@ -76,10 +76,16 @@ def bayesian_credibility_premium(
         exposure=exp_arr,
     )
 
-    with np.errstate(over="ignore", invalid="ignore"):
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
         posterior_alpha = alpha_arr + claims_arr
         posterior_beta = beta_arr + exp_arr
-        result = np.asarray(posterior_alpha / posterior_beta, dtype=np.float64)
+        direct = posterior_alpha / posterior_beta
+        # Halve all terms only if either sum overflows. The ratio is unchanged.
+        overflow = ~np.isfinite(posterior_alpha) | ~np.isfinite(posterior_beta)
+        scaled = (alpha_arr / 2 + claims_arr / 2) / (
+            beta_arr / 2 + exp_arr / 2
+        )
+        result = np.asarray(np.where(overflow, scaled, direct), dtype=np.float64)
 
     return check_finite_result(result, "bayesian_credibility_premium")
 
