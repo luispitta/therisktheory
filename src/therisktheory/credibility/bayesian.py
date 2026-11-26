@@ -1,108 +1,146 @@
-"""Risk retention, division, and inflation adjustment models in actuarial science."""
+"""Bayesian credibility models under Gamma-Poisson conjugacy."""
 
 from __future__ import annotations
 
-from typing import Union
+from typing import TYPE_CHECKING
+
 import numpy as np
-import numpy.typing as npt
 
-NUMERIC_KINDS = {"i", "u", "f"}
+from therisktheory._validation import (
+    as_nonnegative_finite_array,
+    check_broadcastable,
+    check_finite_result,
+)
 
-
-def _validate_numeric_array(value: Union[float, int, npt.ArrayLike], name: str) -> npt.NDArray[np.float64]:
-    """Validate that input is a finite, non-negative numeric value or array."""
-    try:
-        array = np.asarray(value)
-    except (ValueError, TypeError) as error:
-        raise TypeError(f"{name} must be a real number or array") from error
-
-    if array.dtype.kind not in NUMERIC_KINDS:
-        raise TypeError(f"{name} must be a numeric type, got dtype {array.dtype}")
-
-    array = array.astype(np.float64, copy=False)
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must be finite (no NaN or infinity allowed)")
-    if np.any(array < 0):
-        raise ValueError(f"{name} must be non-negative")
-    return array
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 
-def _check_finite_result(result: npt.NDArray[np.float64], name: str) -> npt.NDArray[np.float64]:
-    """Raise OverflowError if a computed result exceeds float64 range."""
-    if not np.all(np.isfinite(result)):
-        raise OverflowError(f"{name} overflowed: the result exceeds the float64 range")
-    return result
-
-
-def retained_loss(loss: Union[float, int, npt.ArrayLike], retention_limit: float) -> npt.NDArray[np.float64]:
-    """Calculate the retained loss by an insurer given a retention limit."""
-    loss_arr = _validate_numeric_array(loss, "loss")
-    limit_arr = _validate_numeric_array(retention_limit, "retention_limit")
-
-    with np.errstate(over="raise", invalid="raise"):
-        try:
-            result = np.minimum(loss_arr, limit_arr)
-        except FloatingPointError as e:
-            raise OverflowError("Numerical overflow in retained_loss") from e
-    return _check_finite_result(result, "retained_loss")
-
-
-def retention_capacity(surplus: float, maximum_retention_ratio: float) -> float | npt.NDArray[np.float64]:
-    """Determine the financial retention capacity based on insurer surplus."""
-    surplus_arr = _validate_numeric_array(surplus, "surplus")
-    ratio_arr = _validate_numeric_array(maximum_retention_ratio, "maximum_retention_ratio")
-    if np.any(ratio_arr > 1.0):
-        raise ValueError("maximum_retention_ratio must be between 0.0 and 1.0")
-
-    with np.errstate(over="raise", invalid="raise"):
-        try:
-            result = surplus_arr * ratio_arr
-        except FloatingPointError as e:
-            raise OverflowError("Numerical overflow in retention_capacity") from e
-    return _check_finite_result(result, "retention_capacity")
-
-
-def inflate_losses(
-    loss: Union[float, int, npt.ArrayLike],
-    inflation_rate: float,
-    periods: int = 1,
+def _validate_positive_scalar_or_array(
+    value: npt.ArrayLike, name: str
 ) -> npt.NDArray[np.float64]:
-    """Project the impact of inflation on risk losses over time."""
-    loss_arr = _validate_numeric_array(loss, "loss")
-    if not isinstance(periods, (int, np.integer)) or periods < 0:
-        raise TypeError("periods must be a non-negative integer")
-    if inflation_rate < -1.0:
-        raise ValueError("inflation_rate cannot be less than -1.0 (-100%)")
-
-    with np.errstate(over="raise", invalid="raise"):
-        try:
-            factor = (1.0 + inflation_rate) ** periods
-            result = loss_arr * factor
-        except FloatingPointError as e:
-            raise OverflowError("Numerical overflow in inflate_losses") from e
-    return _check_finite_result(result, "inflate_losses")
+    """Validate that input is finite and strictly positive (> 0)."""
+    arr = as_nonnegative_finite_array(value, name)
+    if np.any(arr <= 0.0):
+        raise ValueError(f"{name} must be strictly positive (> 0)")
+    return arr
 
 
-def deflate_losses(
-    inflated_loss: Union[float, int, npt.ArrayLike],
-    inflation_rate: float,
-    periods: int = 1,
+def bayesian_credibility_premium(
+    alpha: npt.ArrayLike,
+    beta: npt.ArrayLike,
+    claims: npt.ArrayLike,
+    exposure: npt.ArrayLike,
 ) -> npt.NDArray[np.float64]:
-    """Discount the effect of inflation to bring losses back to present value."""
-    loss_arr = _validate_numeric_array(inflated_loss, "inflated_loss")
-    if not isinstance(periods, (int, np.integer)) or periods < 0:
-        raise TypeError("periods must be a non-negative integer")
-    if inflation_rate < -1.0:
-        raise ValueError("inflation_rate cannot be less than -1.0 (-100%)")
-    if inflation_rate == -1.0 and periods > 0:
-        raise ValueError("Division by zero: inflation_rate of -1.0 with positive periods is undefined for deflation.")
+    """Compute the Bayesian credibility pure premium under a Gamma-Poisson model.
 
-    with np.errstate(over="raise", divide="raise", invalid="raise"):
-        try:
-            factor = (1.0 + inflation_rate) ** periods
-            if factor == 0.0:
-                raise ValueError("Division by zero in deflation factor.")
-            result = loss_arr / factor
-        except (FloatingPointError, ZeroDivisionError) as e:
-            raise ValueError("Division by zero or numerical error in deflate_losses") from e
-    return _check_finite_result(result, "deflate_losses")
+    Given a Gamma(alpha, beta) prior for the underlying claim frequency parameter
+    lambda and Poisson-distributed observed claim counts X over exposure t, the
+    conjugate posterior distribution is:
+        lambda | X ~ Gamma(alpha + X, beta + t)
+
+    The Bayesian credibility premium under squared-error loss is the posterior mean:
+        P_Bayes = E[lambda | X] = (alpha + X) / (beta + t)
+                = Z * (X / t) + (1 - Z) * (alpha / beta)
+    where Z = t / (beta + t) is the Bayesian credibility factor.
+
+    Args:
+        alpha: Prior Gamma shape parameter (alpha > 0).
+        beta: Prior Gamma rate parameter (beta > 0).
+        claims: Observed claim counts (claims >= 0).
+        exposure: Observed exposure units (exposure > 0).
+
+    Returns:
+        np.ndarray: Bayesian credibility premium as a float64 array (0-d for scalars).
+
+    Raises:
+        TypeError: If any input is not made of real numbers.
+        ValueError: If alpha <= 0, beta <= 0, exposure <= 0, claims < 0,
+            any input is NaN/infinite, or shapes cannot be broadcast together.
+        OverflowError: If the computed result exceeds the float64 range.
+
+    References:
+        Bühlmann, H. (1970). Mathematical Methods in Risk Theory. Springer, Ch. 4.
+        Klugman, S. A., Panjer, H. H., & Willmot, G. E. (2019). Loss Models:
+            From Data to Decisions (5th ed.). Wiley, Ch. 16.
+    """
+    alpha_arr = _validate_positive_scalar_or_array(alpha, "alpha")
+    beta_arr = _validate_positive_scalar_or_array(beta, "beta")
+    claims_arr = as_nonnegative_finite_array(claims, "claims")
+    exp_arr = _validate_positive_scalar_or_array(exposure, "exposure")
+
+    check_broadcastable(
+        alpha=alpha_arr,
+        beta=beta_arr,
+        claims=claims_arr,
+        exposure=exp_arr,
+    )
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        posterior_alpha = alpha_arr + claims_arr
+        posterior_beta = beta_arr + exp_arr
+        result = np.asarray(posterior_alpha / posterior_beta, dtype=np.float64)
+
+    return check_finite_result(result, "bayesian_credibility_premium")
+
+
+def posterior_predictive_mean(
+    alpha: npt.ArrayLike,
+    beta: npt.ArrayLike,
+    claims: npt.ArrayLike,
+    exposure: npt.ArrayLike,
+    future_exposure: npt.ArrayLike = 1.0,
+) -> npt.NDArray[np.float64]:
+    """Compute the posterior predictive mean claim frequency for a future period.
+
+    In the Gamma-Poisson conjugate model, the posterior predictive distribution
+    for future claims X_new over future_exposure t_new is Negative Binomial
+    (Gamma-Poisson mixture) with expected value:
+        E[X_new | X] = t_new * E[lambda | X] = t_new * (alpha + X) / (beta + t)
+
+    When future_exposure = 1.0 (default unit exposure), this equals the
+    Bayesian credibility premium E[lambda | X].
+
+    Args:
+        alpha: Prior Gamma shape parameter (alpha > 0).
+        beta: Prior Gamma rate parameter (beta > 0).
+        claims: Observed claim counts (claims >= 0).
+        exposure: Observed exposure units (exposure > 0).
+        future_exposure: Future exposure units for prediction (default 1.0, > 0).
+
+    Returns:
+        np.ndarray: Posterior predictive expected claims as a float64 array.
+
+    Raises:
+        TypeError: If any input is not made of real numbers.
+        ValueError: If parameters/exposures <= 0, claims < 0, non-finite inputs,
+            or incompatible broadcast shapes.
+        OverflowError: If the result overflows float64.
+
+    References:
+        Klugman, S. A., Panjer, H. H., & Willmot, G. E. (2019). Loss Models:
+            From Data to Decisions (5th ed.). Wiley, Ch. 16.
+        Bowers, N. L., et al. (1997). Actuarial Mathematics (2nd ed.). SOA.
+    """
+    fut_exp_arr = _validate_positive_scalar_or_array(
+        future_exposure, "future_exposure"
+    )
+    cred_premium = bayesian_credibility_premium(alpha, beta, claims, exposure)
+
+    check_broadcastable(
+        credibility_premium=cred_premium,
+        future_exposure=fut_exp_arr,
+    )
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        result = np.asarray(fut_exp_arr * cred_premium, dtype=np.float64)
+
+    return check_finite_result(result, "posterior_predictive_mean")
+
+# Backward-compatible names from the prior integration snapshot.
+from therisktheory.solvency_pricing._retention_compat import (  # noqa: E402, F401
+    deflate_losses,
+    inflate_losses,
+    retained_loss,
+    retention_capacity,
+)

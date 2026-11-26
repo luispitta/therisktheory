@@ -26,7 +26,7 @@ The work from #1 and #30 was already merged into `master`. All other unique cont
 
 ## Unresolved issues
 
-1. **#24 Bayesian credibility:** `credibility/bayesian.py` contains retention functions but not the functions imported by its tests and example (`bayesian_credibility_premium`, `posterior_predictive_mean`). These tests are expected to fail until the implementation is supplied.
+1. **#24 Bayesian credibility:** the student's 24 November post-integration update supplies `bayesian_credibility_premium` and `posterior_predictive_mean`. The corrected source and expanded documentation are incorporated; numerical and CI validation remain pending.
 2. **#2 Solvency:** capital requirements are a simplified teaching convention, not a regulatory formula. Cross-module dependency and numerical cases require integration testing.
 3. **#21 Partial credibility:** review duplicated premium functions and reconcile with #18 and #12; remove the conditional fallback when an integrated API is established.
 4. **#25 and #28 Lundberg and reinsurance:** confirm valid moment-generating-function domains and optimized retention boundary cases with independent tests.
@@ -36,3 +36,7 @@ The work from #1 and #30 was already merged into `master`. All other unique cont
 Integration is administrative. Mathematical and CI acceptance remain separate tasks.
 
 Prof. Luis Pitta
+
+## Conflict resolution and source history — 26 November 2026
+
+The integration snapshot from PR #31 is the resolved version for overlapping or stale files. Original PR heads are included as merge parents to preserve authorship and history. The later #24 Gamma–Poisson implementation and expanded documentation supersede the incorrect Bayesian module; its prior misplaced retention code is preserved in a compatibility module. Existing foundational files and lazy exports are retained instead of accepting stale modifications or deletions. Original branches are unchanged. This is administrative integration, not mathematical or CI approval.
